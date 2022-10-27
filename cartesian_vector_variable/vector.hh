@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstring>
 #include <stdlib.h>
-
+#include <exception>
 #include <memory>
 
 #include "config.h"
@@ -19,6 +19,11 @@ public:
     Vector& operator=(const Vector&) = default;
     ~Vector() = default;
 //
+
+    Vector(std::size_t size)
+    {
+        _list = std::make_shared<InternalContainer<value>>(size);
+    }
 
 // Add suitable constructors
     Vector() : _list(std::make_shared<InternalContainer<value>>())
@@ -34,6 +39,9 @@ public:
 // Public Member functions here
     Vector& operator+=(const Vector& rhs)
     {
+        if (rhs.size() != size())
+            throw std::runtime_error("Incompatible size");
+
         for (std::size_t i = 0; i < rhs.size(); i++) {
             (*_list)[i] += rhs[i];
 
@@ -53,7 +61,10 @@ public:
 
     Vector& operator-=(const Vector& rhs)
     {
-        for (int i = 0; i < _list->size(); i++) 
+        if (rhs.size() != size())
+            throw std::runtime_error("Incompatible size");
+
+        for (int i = 0; i < _list->size(); i++)
             (*_list)[i] -= rhs[i];
         return *this;
     }
@@ -72,6 +83,9 @@ public:
     {
         Vector x{};
         int idx = 0;
+
+        if (other.size() != size())
+            throw std::runtime_error("Incompatible size");
 
         for (int i = 0; i < other.size(); i++, idx++) { 
             int l = other[i], r;
@@ -110,6 +124,9 @@ public:
         int idx = 0;
         int res = 0;
         
+        if (other.size() != size())
+            throw std::runtime_error("Incompatible size");
+
         for (std::size_t i = 0; i < _list->size(); i++, idx++) 
             res += (other[i] * (*_list)[idx]);
 
@@ -138,7 +155,7 @@ private:
             InternalContainer(std::initializer_list<T> list) : _size(list.size())
             {
                 int i = 0;
-                _list = static_cast<T *>(std::malloc(sizeof(T) * _size));
+                _list = std::unique_ptr<T[]>(new T[_size]);
 
                 for (const auto &x : list)
                     _list[i++] = x;
@@ -147,22 +164,32 @@ private:
             InternalContainer() : _size(0), _list(nullptr)
             {
             };
+
+            InternalContainer(std::size_t size) : _size(size)
+            {
+                _list.reset(new T[_size]);
+                for (auto i = 0; i < size; i += 1)
+                    _list[i] = static_cast<value>(0);
+            };
             
             ~InternalContainer()
             {
-                if (_list != nullptr)
-                    std::free(_list);
             };
 
             void resize(int newSize)
             {
-                if (_list == nullptr) {
-                    _size = newSize;
-                    _list = static_cast<T *>(std::malloc(sizeof(T) * newSize));
-                    std::memset(_list, 0, sizeof(T) * newSize);
-                } else {
-                    _list = static_cast<T *>(std::realloc(_list, sizeof(T) * (newSize)));
-                    _size = newSize;
+                auto oldSize = _size;
+                _size = newSize;
+
+                if (_list == nullptr)
+                    _list.reset(new T[_size]);
+                else {
+                    T* tmp = _list.release();
+                    _list.reset(new T[_size]);
+
+                    for (auto i = 0; i < oldSize; i++)
+                        _list[i] = tmp[i];
+                    delete[] tmp;
                 }
             }
 
@@ -196,7 +223,7 @@ private:
             }
 
         private:
-            T *_list;
+            std::unique_ptr<T[]> _list;
             std::size_t _size;
     };
 
